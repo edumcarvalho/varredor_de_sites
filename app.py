@@ -7,7 +7,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from time import sleep
-
+import openpyxl
+import smtplib
+from email.message import EmailMessage
 
 def iniciar_driver():
     chrome_options = Options()
@@ -42,11 +44,36 @@ def iniciar_driver():
 
 driver, wait = iniciar_driver()
 
+# Configuração da planilha
+workbook = openpyxl.Workbook()
+del workbook['Sheet']
+workbook.create_sheet('Celulares')
+sheet_atual = workbook['Celulares']
+sheet_atual.append(['Descrição','Valor'])    
+
+# Configuração do email
+## Configurações de login
+EMAIL_ADDRESS = '????????'
+EMAIL_PASSWORD = '????????'
+
+## Criar um email
+mail = EmailMessage()
+mail['Subject'] = 'Seu relatório de preços'
+mensagem = '''
+Baixe seu relatório de preços agora!
+'''
+mail['From'] = EMAIL_ADDRESS
+mail.add_header('Content-Type', 'text/html')
+mail.set_payload(mensagem.encode('utf-8'))
+
+
+# Início
 driver.get('https://telefonesimportados.netlify.app')
-email = input('Digite o email para o qual o relatório deve ser enviado: ')
-print(f'O relatório será enviado para o email: {email} ...')
+emailTo = input('Digite o email para o qual o relatório deve ser enviado: ')
+print(f'O relatório será enviado para o email: {emailTo} ...')
+pagina = 2
 while True:
-    sleep(2)
+    sleep(1)
 
     # Encontrar título dos produtos
     produtos = wait.until(CondicaoExperada.visibility_of_all_elements_located(
@@ -55,20 +82,38 @@ while True:
     # Encontrar preços dos produtos
     precos = wait.until(CondicaoExperada.visibility_of_all_elements_located(
         (By.XPATH, "//div[@class='product-carousel-price']//ins")))
-    sleep(2)
+    sleep(1)
 
-    # Gravar em planilha
+    # Gravar em planilha    
+    print(f'################### Página: {pagina - 1} ###################')
     for produto, preco in zip(produtos, precos):
         print(produto.text, preco.text)
+        sheet_atual.append([produto.text, preco.text])    
 
     # Buscar próxima página
-    try:
-        botao_proxima_pagina = wait.until(
-            CondicaoExperada.element_to_be_clickable((By.ID, "proxima_pagina")))
+    try:        
+        botao_proxima_pagina = driver.find_element(By.LINK_TEXT, str(pagina))        
+        pagina = pagina +1
         botao_proxima_pagina.click()
-        sleep(2)
-        print('clicked next page')
+        print('Indo para a próxima página')
+        sleep(1)        
     except:
         print('Chegamos a última página')
-        sleep(60)
-        driver.get('https://cursoautomacao.netlify.app/listagem1')
+        workbook.save('Produtos.xlsx')
+        break
+
+try:
+    print('Enviando e-mail')    
+    sleep(1)
+    mail['To'] = emailTo
+    mail.add_attachment(maintype='application',subtype='octet-stream', filename='Produtos.xlsx')
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as email:
+        email.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        email.send_message(mail)
+    print('E-mail enviado com sucesso...')
+    driver.get('https://telefonesimportados.netlify.app')
+except:
+    print('Erro ao enviar o e-mail')
+
+
+
